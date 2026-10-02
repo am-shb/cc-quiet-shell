@@ -23,7 +23,6 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#-vs-">! vs $</a> ·
-  <a href="#proof-not-vibes">Proof</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#honest-limitations">Limitations</a> ·
   <a href="#faq">FAQ</a>
@@ -140,24 +139,6 @@ installed and cloned into `~/.claude/skills`, the installed copy wins and
 | Waiting for a reply | yes | **no** |
 | Prompt switches into shell mode (pink border, `!` glyph) | ✅ | ❌ a pink `$` in a normal prompt ([why](#honest-limitations)) |
 
-## Proof, not vibes
-
-"Claude doesn't reply" is easy to claim, so it was tested against the real
-thing: a real interactive Claude Code 2.1.287 driven through tmux, with
-`ANTHROPIC_BASE_URL` pointed at a local stub that logs every API request.
-
-- **0 API requests** for every `$` command. That held for twenty in a row,
-  for commands typed while Claude was busy, and for commands pasted and sent
-  the same instant. In the same sessions, `!` commands did call the API.
-- **Byte-identical transcript.** 20 commands, plus a here-document, went
-  through `!` and through `$` and the session files were diffed: the same
-  `<bash-input>`, `<bash-stdout>` and `<bash-stderr>` rows, and the same
-  "don't respond" note Claude Code uses for no-reply `!` commands. The one
-  difference is where output too large for the transcript gets saved.
-- **Identical screens.** The terminal captures of both runs, color codes
-  included, match byte for byte.
-- **45 tests**, through Claude Code's own plugin test kit:
-  `claude plugin test .`.
 
 ## How it works
 
@@ -193,7 +174,7 @@ sequenceDiagram
 All the logic is in [`hooks/register.tsx`](hooks/register.tsx) and
 [`hooks/quiet.ts`](hooks/quiet.ts), about 700 lines including comments.
 
-## Honest limitations
+## Limitations
 
 The mod API in 2.1.287 can't do everything. Here's every place `$` differs
 from `!`:
