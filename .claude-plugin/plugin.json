@@ -1,0 +1,7 @@
+{
+  "name": "quiet-shell",
+  "version": "0.1.0",
+  "description": "A second shell prefix: $ runs a command the way ! does, without Claude responding to it.",
+  "author": { "name": "am-shb" },
+  "types": "./types/index.d.ts"
+}
