@@ -1,168 +1,220 @@
-# quiet-shell
+<h1 align="center">quiet-shell</h1>
 
-A Claude Code mod (a plugin of function hooks) that adds `$` as a second shell
-prefix. `$ cmd` runs the command the way `! cmd` does and leaves the same rows
-in the transcript, but Claude never responds to it: no model call, no tokens,
-no waiting for a reply. `!` is untouched and still gets its response.
+<p align="center">
+  <b><code>!ls</code> makes Claude reply. <code>$ls</code> doesn't.</b>
+</p>
 
-Built and tested against Claude Code **2.1.287**. The function-hooks API is
-early access and changes between releases, and this mod mirrors some engine
-behavior (see below), so recheck it after upgrading.
+<p align="center">
+  A second shell prefix for Claude Code. <code>$</code> runs your command and shows the output
+  exactly the way <code>!</code> does, then gets out of the way.<br>
+  No model call. No tokens. No waiting.
+</p>
 
-## The parts the mod API can't deliver
+<p align="center">
+  <img alt="Built for Claude Code 2.1.287" src="https://img.shields.io/badge/built%20for-Claude%20Code%202.1.287-D97757">
+  <img alt="Tokens per $ command: 0" src="https://img.shields.io/badge/tokens%20per%20%24%20command-0-2ea44f">
+  <img alt="Tests: 45 passing" src="https://img.shields.io/badge/tests-45%20passing-2ea44f">
+</p>
 
-Read this first. The spec asked for `$` to feel identical to `!`. Some of that
-can't be done with the 2.1.287 mod API, and the mod doesn't hide that:
+<p align="center">
+  <img src="assets/demo.svg" width="100%" alt="Two Claude Code terminals side by side. Left: typing !ls runs ls, then Claude starts a turn and you wait. Right: with quiet-shell, $ls, $git status -s and $code . each run and return straight to the prompt.">
+</p>
 
-**1. Typing `$` does not put the prompt into shell mode, so it doesn't look
-like shell mode.** The `$` stays in the draft as an ordinary character. The mod
-paints it in shell mode's pink, and that is the only part of the look it can
-reproduce:
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#-vs-">! vs $</a> ·
+  <a href="#proof-not-vibes">Proof</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#honest-limitations">Limitations</a> ·
+  <a href="#faq">FAQ</a>
+</p>
 
-| | `!` (shell mode) | `$` (this mod) |
-|---|---|---|
-| glyph left of the input | pink `!` replaces `❯` | `❯` stays; the `$` after it is pink |
-| prompt border | pink | stays gray |
-| footer | `! for shell mode` | the usual footer (permission mode, hints) |
-| ↑ history | filtered to shell commands | all prompts |
-| cursor | can't move before the `!` | can move before the `$` |
+---
 
-Why: no API reaches the prompt's input mode.
-- `$.prompt` offers `submit`, `read`, `fill`, `suggest` and `compose`, and
-  none of them sets a mode. `prompt.fill` in `replace` mode resets the box to
-  prompt mode.
-- A `prompt.edit` hook can rewrite the draft and paint over it. The composer
-  applies the answer through its change handler, but only after the editor has
-  already put the typed `$` in and moved the cursor past it, and shell mode is
-  entered only for a `!` typed with the cursor at the start. So answering `!`
-  for a typed `$` gives a literal `!`, not shell mode. (Read from the 2.1.287
-  source and confirmed by trying it.)
-- No keybinding action switches modes.
-- The prompt box and the footer's permission-mode line are not `ui.render`
-  sites, so a mod can't draw them.
+## Why
 
-**2. Backspacing out deletes a character, not a mode.** Backspace removes the
-`$` and leaves an empty normal prompt. It takes the same keys and ends in the
-same state as leaving shell mode, but what happens on screen is a character
-being deleted.
+Since v2.1.186, Claude responds to every `!` command. That's great for
+`! npm test`. It's pure overhead for `! ls`, `! pwd`, `! git status` and
+`! code .`: you sit through a reply you didn't want, and you pay for it in
+tokens.
 
-**3. Visible differences around submitting.** By the time a hook sees a
-submitted prompt, it has already been sent. The only ways to stop it are to drop
-it or to answer it without passing it on, and both make the engine add a
-notice row that no render hook can hide:
-- `$` with nothing after it, then Enter: you get `● Prompt dropped by a hook: a
-  $ with no command after it runs nothing`, and the `$` goes back in the box.
-  An empty `!` + Enter does nothing.
-- Esc while a `$` command runs: like `!`, the command is killed and put back in
-  the box. You also get `● Prompt dropped by a hook: interrupted`.
+The setting `respondToBashCommands: false` turns the reply off for **every**
+`!` command, so then you can't get one when you do want it.
 
-**4. Small transient differences while a command runs.** The running row looks
-like `!`'s (`! cmd` / `⎿  Running…`, no spinner), with three exceptions:
-- The line above the prompt is blank where `!` shows the effort hint
-  (`◐ medium · /effort`).
-- After a couple of seconds, `!` starts showing a live tail of the output, a
-  timer, and a ctrl+b hint for moving the command to the background. `$`
-  keeps showing `Running…` and can't be backgrounded.
-- A `$` typed while Claude is working waits for the turn to end, as `!` does,
-  but once it starts running, Esc can't stop it.
+quiet-shell gives you both, per command:
 
-**5. Side effects of going through the prompt path.** A `$` command has to enter
-as a prompt, so:
-- `UserPromptSubmit` hooks in your settings run for it, and see
-  `<bash-input>cmd</bash-input>`. `!` commands skip those hooks.
-- The engine starts a turn for it, which the mod aborts in `turn.start`, before
-  the first model request. No request is sent: zero were logged across every
-  test (see *Verification*). Other plugins watching turns will see a turn that
-  was aborted. `Stop` hooks do not run.
-
-**6. Shell differences.**
-- `$cd somewhere` doesn't carry over to later commands. With `!`, a `cd`
-  inside the project does. No mod API changes the session's working directory.
-- Output past `bashOutputMaxChars` is saved under
-  `$TMPDIR/claude-quiet-shell/<session>/` rather than the session's
-  tool-results folder. The row reads the same apart from that path.
-- The engine takes its shell snapshot (your config's aliases, functions and
-  options) only on a session's first Bash use. If a `$` command comes first, the
-  mod takes one the same way. It holds the same options, functions and aliases,
-  but not the engine's private shims for its own `rg`/`find`/`grep`/`pkill`.
-
-**7. Scope.** Only prompts typed in the terminal are handled. Prompts from
-Remote Control (phone, web), the SDK, or other plugins pass through untouched.
-The desktop app's composer is untested. So is zsh: every end-to-end check
-below ran under bash. For zsh, the mod follows the engine's own zsh steps, and
-the unit tests cover the script it builds.
-
-## What does match `!`
-
-These were checked against the real engine (see *Verification*):
-
-- **No model call.** Zero API requests for any `$` command, including twenty
-  sent back to back, ones typed while Claude was working, and ones sent the
-  instant they were typed or pasted.
-- **The transcript.** For a 20-command matrix (empty output, stderr, non-zero
-  exits, escaping, CRLF and tabs, aliases, functions, `.bashrc` exports, nested
-  quotes, relative paths, large output) plus a here-document, the stored rows
-  are byte-for-byte the
-  rows a `!` command stores under `respondToBashCommands: false`: the
-  `local-command-caveat` note, `<bash-input>`, and `<bash-stdout>` /
-  `<bash-stderr>`. The one exception is the saved-output path. The drawn
-  screens are identical too, colors included.
-- **What Claude sees later.** On your next prompt, the `$` commands are in
-  context with the same caveat as a no-respond `!` command ("run directly in
-  Claude Code, not sent to you as a request").
-- **How the command runs.** The same shell (`CLAUDE_CODE_SHELL`, else `$SHELL`
-  if it's bash or zsh), the same snapshot of your aliases, functions and
-  options, the same `~/.bashrc` read (bash reads it on its own when stdin is a
-  socket, as the engine's is), and the session's working directory. Like the
-  engine, it turns extglob off, takes stdin from `/dev/null` (except for
-  here-documents), merges stderr into stdout, and leaves the positional
-  parameters empty.
-- **Interaction.** `!` is unchanged, and so is a `$` typed inside `!` mode,
-  which isn't painted. A `$` that isn't the first thing typed into an empty
-  prompt is ordinary text and goes to Claude. Pasting `$cmd` into an empty
-  prompt counts the same as typing it. Recalling a `$` command with ↑ runs it
-  quietly again. A `$` typed while Claude works is queued and runs after the
-  turn.
+```text
+! npm test       # runs; Claude reads the output and answers
+$ ls             # runs; that's it
+```
 
 ## Install
 
-Any one of these:
+```sh
+git clone https://github.com/am-shb/cc-quiet-shell ~/.claude/skills/quiet-shell
+```
+
+Start a new Claude Code session, type `$` into an empty prompt (it turns
+pink), add a command, and hit Enter.
+
+<details>
+<summary>Other ways to load it</summary>
 
 ```sh
-# loaded by every new interactive session
-git clone https://github.com/am-shb/cc-quiet-shell ~/.claude/skills/quiet-shell
-
-# or, for one session
+# just for one session
 claude --plugin-dir /path/to/cc-quiet-shell
 ```
 
-Or add it to the `env` block of `~/.claude/settings.json`:
-`"CLAUDE_CODE_PLUGIN_DIRS": "/path/to/cc-quiet-shell"`.
+Or add it to the `env` block of `~/.claude/settings.json`, which every
+session reads:
 
-Requires a bash or zsh shell, so macOS, Linux or WSL.
+```json
+{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/cc-quiet-shell" } }
+```
+
+</details>
+
+It needs bash or zsh, so macOS, Linux or WSL. To remove it:
+`rm -rf ~/.claude/skills/quiet-shell`.
+
+## `!` vs `$`
+
+|  | `!cmd` | `$cmd` with quiet-shell |
+|---|:---:|:---:|
+| Runs in your shell: aliases, functions, `.bashrc`, current directory | ✅ | ✅ |
+| Command and output shown in the transcript | ✅ | ✅ identical rows |
+| Claude sees it as context on your next prompt | ✅ | ✅ |
+| Starts a model turn | yes | **no** |
+| Tokens spent | yes | **0** |
+| Waiting for a reply | yes | **no** |
+| Prompt switches into shell mode (pink border, `!` glyph) | ✅ | ❌ a pink `$` in a normal prompt ([why](#honest-limitations)) |
+
+## Proof, not vibes
+
+"Claude doesn't reply" is easy to claim, so it was tested against the real
+thing: a real interactive Claude Code 2.1.287 driven through tmux, with
+`ANTHROPIC_BASE_URL` pointed at a local stub that logs every API request.
+
+- **0 API requests** for every `$` command. That held for twenty in a row,
+  for commands typed while Claude was busy, and for commands pasted and sent
+  the same instant. In the same sessions, `!` commands did call the API.
+- **Byte-identical transcript.** 20 commands, plus a here-document, went
+  through `!` and through `$` and the session files were diffed: the same
+  `<bash-input>`, `<bash-stdout>` and `<bash-stderr>` rows, and the same
+  "don't respond" note Claude Code uses for no-reply `!` commands. The one
+  difference is where output too large for the transcript gets saved.
+- **Identical screens.** The terminal captures of both runs, color codes
+  included, match byte for byte.
+- **45 tests**, through Claude Code's own plugin test kit:
+  `claude plugin test .`.
 
 ## How it works
 
-| Hook | What it does |
+quiet-shell is a **mod**, a plugin of function hooks, written against
+Claude Code's early-access hooks API. It hooks six events:
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant CC as Claude Code
+    participant QS as quiet-shell
+    participant Sh as your shell
+    You->>CC: types $ls, hits Enter
+    CC->>QS: prompt.submit
+    QS->>Sh: runs ls the way ! does
+    Sh-->>QS: output
+    QS->>CC: swaps the prompt for a "! ls" input row
+    CC->>QS: session.append
+    QS-->>CC: adds the output row and the "don't respond" note
+    CC->>QS: turn.start
+    QS-->>CC: aborts the turn before its first request
+    Note over CC: The API is never called
+```
+
+| Hook | Job |
 |---|---|
-| `prompt.edit` | Arms when `$` is typed or pasted into an empty prompt outside `!` mode, and paints it. Disarms if the `$` is deleted or text is put in front of it. |
-| `prompt.submit` | Decides whether the prompt is a quiet command, and waits briefly for edits typed just before Enter. Runs the command with the same script the engine uses for `!` (see `shellScript` in `hooks/quiet.ts`), then sends `<bash-input>cmd</bash-input>` on in place of the prompt. A `.catch` drops a `$` prompt rather than letting a failure send it to Claude. |
-| `session.append` | Adds the caveat and the output to that row, so it is stored and drawn as a `!` command's rows are. |
-| `turn.start` | Aborts the turn the row starts, before its first request. |
-| `ui.render` | Draws the waiting prompt as `!`'s running row and hides the spinner while a `$` command runs. Reads the footer hint to tell when `!` mode is on. |
+| `prompt.edit` | Arms on a `$` typed or pasted into an empty prompt (outside `!` mode) and paints it pink. |
+| `prompt.submit` | Runs the command with the same script Claude Code uses for `!`: your shell snapshot, the same stdin and stderr handling, the same output formatting. |
+| `session.append` | Stores the result as the exact rows a no-reply `!` command stores. |
+| `turn.start` | Ends the turn before it sends anything. |
+| `ui.render` | While the command runs, draws `! cmd` / `⎿  Running…` like `!` does, and hides the spinner. |
 
-The mod remembers up to 200 `$` commands in its plugin store, so a recalled
-one runs quietly again. A recalled prompt that merely starts with `$` and was
-never run quietly goes to Claude.
+All the logic is in [`hooks/register.tsx`](hooks/register.tsx) and
+[`hooks/quiet.ts`](hooks/quiet.ts), about 700 lines including comments.
 
-## Verification
+## Honest limitations
 
-- `claude plugin validate .`
-- `claude plugin test .`: 45 tests, covering the arming rules, the submit
-  decision, the row formats, and the hooks run through the engine's test kit.
-- `tsc -p .`: type-checks the hooks and tests once Claude Code has loaded the
-  mod, since loading writes `.claude-plugin/types/`.
-- End to end, outside this repo: a real interactive Claude Code in tmux, with
-  `ANTHROPIC_BASE_URL` pointed at a local stub that logs every request. Each
-  command was run through `!` and through `$`, and the transcript files and
-  colored screen captures were diffed.
+The mod API in 2.1.287 can't do everything. Here's every place `$` differs
+from `!`:
+
+- **The prompt doesn't switch into shell mode.** The `$` is a pink character
+  in a normal prompt. You still see the `❯` glyph, the border stays gray, the
+  footer stays as it is, and ↑ history isn't filtered to shell commands.
+  Backspace deletes the `$` rather than leaving a mode.
+- **Two cases add a notice row.** Pressing Enter on `$` alone, or Esc while a
+  `$` command runs (the command is killed and put back in the box, as with
+  `!`), adds `● Prompt dropped by a hook: …` to the transcript.
+- **Your `UserPromptSubmit` settings hooks run** for `$` commands. `!` skips
+  them.
+- **Long-running commands show only `Running…`.** You get no live output tail,
+  no timer and no ctrl+b to background. A `$` typed while Claude is busy waits
+  for the turn and can't be interrupted once it starts.
+- **`$cd` doesn't stick** for later commands.
+- **Terminal only.** Remote Control, the SDK and the desktop composer are not
+  handled. zsh hasn't been tested end to end.
+
+<details>
+<summary>Why the prompt can't look like shell mode</summary>
+
+No mod API reaches the prompt's input mode. `$.prompt` offers `submit`,
+`read`, `fill`, `suggest` and `compose`, and `fill` resets the box to prompt
+mode. A `prompt.edit` hook can rewrite the draft, but Claude Code applies
+its answer only after the typed `$` is already in and the cursor has moved
+past it. Shell mode starts only from a `!` typed at the very start, so
+answering `!` gives you a literal `!`. No keybinding switches modes, and the
+prompt box and footer aren't render sites. The notice rows come from the
+same constraint: by the time a hook sees a prompt it has been sent, and the
+only way to stop it adds that notice.
+
+</details>
+
+## FAQ
+
+**Does Claude still know what I ran?**
+Yes. On your next prompt Claude sees each `$` command and its output, with the
+same note Claude Code attaches to no-reply `!` commands. You can say "what do
+you make of that?" whenever you like.
+
+**Is it really free?**
+A `$` command sends nothing to the API. The turn Claude Code would start is
+aborted before its first request, and the tests above count requests, not
+just tokens.
+
+**Does it break prompts that start with `$`?**
+Only a `$` typed or pasted into an *empty* prompt arms it, and you can see it
+happen because the `$` turns pink. A `$` anywhere else is plain text. A
+prompt can't start with `!` today either.
+
+**Is it safe?**
+It runs exactly what you typed after the `$`, in your shell, like `!` does. If
+something goes wrong inside the mod before the command runs, it fails closed:
+the `$` prompt is dropped and never sent to Claude.
+
+**Will it survive Claude Code updates?**
+It's built on an early-access API and mirrors some engine behavior, such as
+shell snapshots and the output row format. Run `claude plugin test .` after
+upgrading, and open an issue if something drifts.
+
+## Development
+
+```sh
+claude plugin validate .
+claude plugin test .
+tsc -p .   # after Claude Code has loaded the mod once (it writes .claude-plugin/types/)
+```
+
+---
+
+<p align="center">
+  If <code>$</code> saved you a few seconds today, a ⭐ helps the next person find it.
+</p>
