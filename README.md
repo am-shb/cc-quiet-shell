@@ -50,32 +50,83 @@ $ ls             # runs; that's it
 
 ## Install
 
+In Claude Code 2.1.287 or later, run these two commands:
+
+```text
+/plugin marketplace add am-shb/cc-quiet-shell
+/plugin install quiet-shell@cc-quiet-shell
+```
+
+The second one opens quiet-shell's details. Choose **Install for you (user
+scope)**. It's active right away, even mid-conversation, with no restart.
+Type `$` into an empty prompt (it turns pink), add a command, and hit Enter.
+
+It needs bash or zsh, so macOS, Linux or WSL.
+
+<details>
+<summary>Install from your shell instead</summary>
+
+```sh
+claude plugin marketplace add am-shb/cc-quiet-shell
+claude plugin install quiet-shell@cc-quiet-shell
+```
+
+It loads in your next session. In a session that's already open, run
+`/reload-plugins`.
+
+</details>
+
+<details>
+<summary>Update or uninstall</summary>
+
+|  | In Claude Code | From your shell |
+|---|---|---|
+| **Update** | `/plugin marketplace update cc-quiet-shell` | `claude plugin marketplace update cc-quiet-shell`<br>`claude plugin update quiet-shell@cc-quiet-shell` |
+| **Uninstall** | `/plugin uninstall quiet-shell@cc-quiet-shell`, then Esc | `claude plugin uninstall quiet-shell@cc-quiet-shell` |
+
+In Claude Code, both apply right away. From your shell, they apply in your
+next session, or after `/reload-plugins` in an open one.
+
+Updates don't arrive on their own, because auto-update is off by default for
+third-party marketplaces. To turn it on, run `/plugin`, open
+**Marketplaces**, select **cc-quiet-shell** and choose **Enable
+auto-update**.
+
+`/plugin marketplace remove cc-quiet-shell` removes the marketplace and
+uninstalls quiet-shell along with it.
+
+</details>
+
+<details>
+<summary>Without the plugin manager</summary>
+
+Clone it into your skills folder. It loads in every session, and `git pull`
+updates it:
+
 ```sh
 git clone https://github.com/am-shb/cc-quiet-shell ~/.claude/skills/quiet-shell
 ```
 
-Start a new Claude Code session, type `$` into an empty prompt (it turns
-pink), add a command, and hit Enter.
-
-<details>
-<summary>Other ways to load it</summary>
+Or load a checkout for one session only:
 
 ```sh
-# just for one session
 claude --plugin-dir /path/to/cc-quiet-shell
 ```
 
-Or add it to the `env` block of `~/.claude/settings.json`, which every
-session reads:
+To load a checkout in every session, add it to the `env` block of
+`~/.claude/settings.json`:
 
 ```json
 { "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/cc-quiet-shell" } }
 ```
 
-</details>
+Remove the clone with `rm -rf ~/.claude/skills/quiet-shell`.
 
-It needs bash or zsh, so macOS, Linux or WSL. To remove it:
-`rm -rf ~/.claude/skills/quiet-shell`.
+Pick one method. Only one copy of quiet-shell ever loads. If it's both
+installed and cloned into `~/.claude/skills`, the installed copy wins and
+`/plugin` lists the clone under **Errors**.
+
+</details>
 
 ## `!` vs `$`
 
@@ -202,16 +253,22 @@ the `$` prompt is dropped and never sent to Claude.
 
 **Will it survive Claude Code updates?**
 It's built on an early-access API and mirrors some engine behavior, such as
-shell snapshots and the output row format. Run `claude plugin test .` after
-upgrading, and open an issue if something drifts.
+shell snapshots and the output row format. In a clone, `claude plugin test .`
+checks it against the Claude Code you have. Open an issue if something
+drifts.
 
 ## Development
 
 ```sh
-claude plugin validate .
+claude plugin validate .                            # the marketplace
+claude plugin validate .claude-plugin/plugin.json   # the mod
 claude plugin test .
+claude --plugin-dir .   # try your changes; for that session they replace an installed copy
 tsc -p .   # after Claude Code has loaded the mod once (it writes .claude-plugin/types/)
 ```
+
+To ship a release, bump `version` in `.claude-plugin/plugin.json`. Copies
+installed through `/plugin` update only when it changes.
 
 ---
 

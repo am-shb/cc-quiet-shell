@@ -2,6 +2,9 @@
   "name": "quiet-shell",
   "version": "0.1.0",
   "description": "A second shell prefix: $ runs a command the way ! does, without Claude responding to it.",
-  "author": { "name": "am-shb" },
+  "author": { "name": "am-shb", "url": "https://github.com/am-shb" },
+  "homepage": "https://github.com/am-shb/cc-quiet-shell",
+  "repository": "https://github.com/am-shb/cc-quiet-shell",
+  "keywords": ["shell", "bash", "zsh", "mod", "tokens"],
   "types": "./types/index.d.ts"
 }

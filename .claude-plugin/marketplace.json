@@ -1,0 +1,17 @@
+{
+  "name": "cc-quiet-shell",
+  "description": "quiet-shell: a second shell prefix for Claude Code. $ runs a command the way ! does, without Claude responding to it.",
+  "owner": {
+    "name": "am-shb",
+    "url": "https://github.com/am-shb"
+  },
+  "plugins": [
+    {
+      "name": "quiet-shell",
+      "source": ".",
+      "description": "A second shell prefix: $ runs a command the way ! does, without Claude responding to it.",
+      "category": "productivity",
+      "tags": ["shell", "bash", "zsh", "mod", "tokens"]
+    }
+  ]
+}
