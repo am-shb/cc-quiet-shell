@@ -13,7 +13,7 @@
 <p align="center">
   <img alt="Built for Claude Code 2.1.287" src="https://img.shields.io/badge/built%20for-Claude%20Code%202.1.287-D97757">
   <img alt="Tokens per $ command: 0" src="https://img.shields.io/badge/tokens%20per%20%24%20command-0-2ea44f">
-  <img alt="Tests: 45 passing" src="https://img.shields.io/badge/tests-45%20passing-2ea44f">
+  <img alt="Tests: 46 passing" src="https://img.shields.io/badge/tests-46%20passing-2ea44f">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   <a href="#install">Install</a> ·
   <a href="#-vs-">! vs $</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#honest-limitations">Limitations</a> ·
+  <a href="#limitations">Limitations</a> ·
   <a href="#faq">FAQ</a>
 </p>
 
@@ -137,7 +137,7 @@ installed and cloned into `~/.claude/skills`, the installed copy wins and
 | Starts a model turn | yes | **no** |
 | Tokens spent | yes | **0** |
 | Waiting for a reply | yes | **no** |
-| Prompt switches into shell mode (pink border, `!` glyph) | ✅ | ❌ a pink `$` in a normal prompt ([why](#honest-limitations)) |
+| Prompt switches into shell mode (pink border, `!` glyph) | ✅ | ❌ a pink `$` in a normal prompt ([why](#limitations)) |
 
 
 ## How it works
@@ -165,6 +165,7 @@ sequenceDiagram
 
 | Hook | Job |
 |---|---|
+| `session.start` | Loads the `$` commands you've run before, so one recalled from history runs quietly again. |
 | `prompt.edit` | Arms on a `$` typed or pasted into an empty prompt (outside `!` mode) and paints it pink. |
 | `prompt.submit` | Runs the command with the same script Claude Code uses for `!`: your shell snapshot, the same stdin and stderr handling, the same output formatting. |
 | `session.append` | Stores the result as the exact rows a no-reply `!` command stores. |

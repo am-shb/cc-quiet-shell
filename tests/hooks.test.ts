@@ -210,6 +210,19 @@ describe('a $ command', () => {
     expect(world.stored.at(-1)).toHaveLength(3)
   })
 
+  test('typed twice while a turn runs runs twice, never reaching the model', async ($, on) => {
+    const world = engine(on)
+    for (const _ of [1, 2]) {
+      await typeInto($, edit('', 0, '$date'))
+      await $.prompt.submit(submitted('$date', 'busy'))
+    }
+
+    await store($, row('<bash-input>date</bash-input>'))
+    await store($, row('<bash-input>date</bash-input>'))
+    expect(world.spawned).toHaveLength(2)
+    expect(world.stored.at(-1)).toHaveLength(3)
+  })
+
   test('recalled from history runs quietly again', async ($, on) => {
     const world = engine(on, ['$pwd'])
     await $.session.start(START)

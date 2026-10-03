@@ -67,8 +67,8 @@ export const register: Register = on => {
   let known: string[] = []
   /** Output rows of `$` commands already run, by the text of the row they belong in. */
   const ran = new Map<string, string>()
-  /** `$` commands queued behind a running turn, by their row's text: they run when it is stored. */
-  const queued = new Map<string, string>()
+  /** `$` commands queued behind a running turn, oldest first: each runs when its row is stored. */
+  const queued: { row: string; command: string }[] = []
   /** The texts of turns to end before their first request. */
   const toEnd = new Set<string>()
 
@@ -165,7 +165,7 @@ export const register: Register = on => {
     if (e.turnId !== undefined) {
       // Typed while a turn runs: queued, it runs once its row is stored,
       // after that turn, as a queued `!` command does.
-      queued.set(row, command)
+      queued.push({ row, command })
 
       return next({ ...e, text: row })
     }
@@ -204,17 +204,17 @@ export const register: Register = on => {
         ? text
         : undefined
     const done = row === undefined ? undefined : ran.get(row)
-    const command = row === undefined ? undefined : queued.get(row)
-    if (row === undefined || (done === undefined && command === undefined)) {
+    const waiting = done === undefined ? queued.findIndex(one => one.row === row) : -1
+    if (row === undefined || (done === undefined && waiting === -1)) {
       return next(e)
     }
 
     ran.delete(row)
-    queued.delete(row)
+    const command = waiting === -1 ? undefined : queued.splice(waiting, 1)[0]?.command
     // Marked before anything that can fail: the turn this row starts is
     // ended whatever the run comes to.
     toEnd.add(row)
-    const output = done ?? (await runShown($, command ?? '', `$${command ?? ''}`))
+    const output = done ?? (await runShown($, command ?? '', `$${command}`))
     const content = [
       { type: 'text' as const, text: CAVEAT },
       ...e.message.content,
